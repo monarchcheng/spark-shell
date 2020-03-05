@@ -63,24 +63,49 @@ object App {
     })
 
 
-    val amounts = transByCust.mapValues(t=>t(5).toDouble)
-    val totals = amounts.foldByKey(0)(_+_).collect()
+    val amounts = transByCust.mapValues(t => t(5).toDouble)
+    val totals = amounts.foldByKey(0)(_ + _).collect()
     totals.toSeq.maxBy(_._2)
 
 
-    complTrans = complTrans:+Array("2015-03-30", "11:59PM", "76", "63", "1", "0.00")
+    complTrans = complTrans :+ Array("2015-03-30", "11:59PM", "76", "63", "1", "0.00")
 
-    transByCust=transByCust.union(sc.parallelize(complTrans).map(t=>(t(2).toInt,t)))
+    transByCust = transByCust.union(sc.parallelize(complTrans).map(t => (t(2).toInt, t)))
 
-    transByCust.map(t=>t._2.mkString("#"))
+    transByCust.map(t => t._2.mkString("#"))
 
     val prods = transByCust.aggregateByKey(List[String]())(
 
-      (prod,tran)=>prod:::List(tran(3)),
-      _:::_
+      (prod, tran) => prod ::: List(tran(3)),
+      _ ::: _
     )
 
     prods.collect()
+
+
+    val totalByProd = transData.map(tran => (tran(3).toInt, tran))
+
+    val products = sc.textFile("E:\\productdata.txt").map(_.split("#")).map(p => (p(0).toInt, p))
+
+    var totalsAndProds = totalByProd.join(products)
+
+    totalsAndProds.first()
+
+    //    val totalsWithMissingProds1 = products.leftOuterJoin(totalByProd)
+    val totalsWithMissingProds = totalByProd.rightOuterJoin(products)
+
+    var missingProds = totalsWithMissingProds.
+      filter(a => a._2._1.isEmpty).map(x => x._2._2)
+
+    missingProds = products.subtractByKey(totalByProd).values
+
+    missingProds.foreach(p => println(p.mkString(",")))
+
+    val prodTotCoGroup = totalByProd.cogroup(products)
+
+    prodTotCoGroup.filter(_._2._1.isEmpty).foreach(x => println(x._2._2.head.mkString(",")))
+
+    totalsAndProds = prodTotCoGroup.filter(x => x._2._1.nonEmpty).map(x => (x._2._2.head(0).toInt, (x._2._1.head, x._2._2.head)))
 
 
   }
